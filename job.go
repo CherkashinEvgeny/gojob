@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/pkg/errors"
 	"sync"
-	"time"
 )
 
 type Payload func(ctx context.Context)
@@ -44,27 +43,14 @@ func (p *Job) Status() (status Status) {
 	return
 }
 
-func (p *Job) Start(delay time.Duration, period time.Duration) (err error) {
-	err = p.StartContext(context.Background(), delay, period)
+func (p *Job) Start(strategies ...Strategy) (err error) {
+	err = p.StartContext(context.Background(), strategies...)
 	return
 }
 
-var NegativeDelayError = errors.New("negative delay")
-
-var NegativePeriodError = errors.New("negative period")
-
 var NotReadyError = errors.New("job is not ready to start")
 
-func (p *Job) StartContext(ctx context.Context, delay time.Duration, period time.Duration) (err error) {
-	if delay < 0 {
-		err = NegativeDelayError
-		return
-	}
-	if period < 0 {
-		err = NegativePeriodError
-		return
-	}
-
+func (p *Job) StartContext(ctx context.Context, strategies ...Strategy) (err error) {
 	p.lock.Lock()
 	if p.status != Ready {
 		p.lock.Unlock()
@@ -77,7 +63,7 @@ func (p *Job) StartContext(ctx context.Context, delay time.Duration, period time
 	p.lock.Unlock()
 
 	go func() {
-		p.run(ctx, delay, period)
+		p.run(ctx, strategies...)
 		p.lock.Lock()
 		close(p.done)
 		p.status = Ready
@@ -86,21 +72,23 @@ func (p *Job) StartContext(ctx context.Context, delay time.Duration, period time
 	return
 }
 
-func (p *Job) run(ctx context.Context, delay time.Duration, period time.Duration) {
-	tickTime := time.Now().Add(delay)
-	timer := time.NewTimer(time.Until(tickTime))
-	defer timer.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-timer.C:
-			tickTime = tickTime.Add(period)
-			timer.Reset(time.Until(tickTime))
-			p.payload(ctx)
-		}
+func (p *Job) run(ctx context.Context, strategies ...Strategy) {
+	strategy := Compose(strategies...)
+	defer strategy.Reset()
+	for !isContextCancelled(ctx) && strategy.Tick(ctx) {
+		p.payload(ctx)
 	}
+}
+
+func isContextCancelled(ctx context.Context) (cancelled bool) {
+	select {
+	case <-ctx.Done():
+		cancelled = true
+		break
+	default:
+		break
+	}
+	return
 }
 
 func (p *Job) Done() (done <-chan struct{}) {

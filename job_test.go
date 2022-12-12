@@ -12,7 +12,7 @@ func Test_OnStartJobWithoutDelay_ShouldInvokePayloadFunctionImmediately(t *testi
 	job := New(func(_ context.Context) {
 		done = true
 	})
-	err := job.Start(0, 3*time.Second)
+	err := job.Start(NoDelay(), Interval(3*time.Second))
 	assert.NilError(t, err)
 
 	// wait for start
@@ -28,7 +28,7 @@ func Test_OnStartJobWithDelay_ShouldInvokePayloadFunctionWithDelay(t *testing.T)
 	job := New(func(_ context.Context) {
 		done = true
 	})
-	err := job.Start(time.Second, 3*time.Second)
+	err := job.Start(Delay(time.Second), Interval(3*time.Second))
 	assert.NilError(t, err)
 
 	// wait for start
@@ -47,7 +47,7 @@ func Test_OnStartJob_ShouldInvokePayloadFunctionPeriodically(t *testing.T) {
 	job := New(func(_ context.Context) {
 		counter++
 	})
-	err := job.Start(0, 3*time.Second)
+	err := job.Start(NoDelay(), Interval(3*time.Second))
 	assert.NilError(t, err)
 
 	// wait for start
@@ -71,7 +71,7 @@ func Test_OnStopJob_ShouldCancelExecutionContext(t *testing.T) {
 			break
 		}
 	})
-	err := job.Start(0, 3*time.Second)
+	err := job.Start(NoDelay(), Interval(3*time.Second))
 	assert.NilError(t, err)
 
 	// wait for start
@@ -88,7 +88,7 @@ func Test_OnStopJobWithDelay_ShouldStopImmediately(t *testing.T) {
 		time.Sleep(2 * time.Second)
 		done = true
 	})
-	err := job.Start(2*time.Second, 3*time.Second)
+	err := job.Start(Delay(2*time.Second), Interval(3*time.Second))
 	assert.NilError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -104,7 +104,7 @@ func Test_OnJobStop_ShouldWaitForJobGracefulShutdown(t *testing.T) {
 		time.Sleep(2 * time.Second)
 		done = true
 	})
-	err := job.Start(0, 3*time.Second)
+	err := job.Start(NoDelay(), Interval(3*time.Second))
 	assert.NilError(t, err)
 
 	// wait for start
@@ -121,7 +121,7 @@ func Test_OnJobStopAndContextTimeout_ShouldStopWaitingForShutdownAndReturnContex
 		time.Sleep(3 * time.Second)
 		done = true
 	})
-	err := job.Start(0, 3*time.Second)
+	err := job.Start(NoDelay(), Interval(3*time.Second))
 	assert.NilError(t, err)
 
 	// wait for start
@@ -140,7 +140,7 @@ func Test_OnJobStop_ShouldSendDoneSignalTo(t *testing.T) {
 		time.Sleep(3 * time.Second)
 		done = true
 	})
-	err := job.Start(0, 3*time.Second)
+	err := job.Start(NoDelay(), Interval(3*time.Second))
 	assert.NilError(t, err)
 
 	// wait for start
