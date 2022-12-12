@@ -3,126 +3,108 @@ package job
 import (
 	"context"
 	"github.com/pkg/errors"
-	"sync"
+	"sync/atomic"
+	"time"
 )
 
 type Payload func(ctx context.Context)
 
-type Status uint
-
 const (
-	Ready Status = iota
-	Running
-	Stopped
+	no = iota
+	yes
 )
 
 type Job struct {
-	payload Payload
-	status  Status
-	cancel  func()
-	done    chan struct{}
-	lock    *sync.RWMutex
+	payload  Payload
+	strategy *CompositeStrategy
+	started  uint32
+	cancel   func()
+	done     chan struct{}
 }
 
-var goneDoneChan = make(chan struct{})
-
-func New(payload Payload) (job *Job) {
+func New(payload Payload, strategies ...Strategy) (job *Job) {
 	job = &Job{
-		payload: payload,
-		status:  Ready,
-		done:    goneDoneChan,
-		lock:    &sync.RWMutex{},
+		payload:  payload,
+		strategy: Compose(strategies...),
+		started:  no,
+		done:     make(chan struct{}),
 	}
 	return
 }
 
-func (p *Job) Status() (status Status) {
-	p.lock.RLock()
-	status = p.status
-	p.lock.RUnlock()
-	return
+func (p *Job) Start() {
+	p.StartContext(context.Background())
 }
 
-func (p *Job) Start(strategies ...Strategy) (err error) {
-	err = p.StartContext(context.Background(), strategies...)
-	return
-}
+var alreadyStartedError = errors.New("already started")
 
-var NotReadyError = errors.New("job is not ready to start")
-
-func (p *Job) StartContext(ctx context.Context, strategies ...Strategy) (err error) {
-	p.lock.Lock()
-	if p.status != Ready {
-		p.lock.Unlock()
-		err = NotReadyError
-		return
+func (p *Job) StartContext(ctx context.Context) {
+	if !atomic.CompareAndSwapUint32(&p.started, no, yes) {
+		panic(alreadyStartedError)
 	}
 	ctx, p.cancel = context.WithCancel(ctx)
-	p.done = make(chan struct{})
-	p.status = Running
-	p.lock.Unlock()
 
 	go func() {
-		p.run(ctx, strategies...)
-		p.lock.Lock()
+		p.run(ctx)
 		close(p.done)
-		p.status = Ready
-		p.lock.Unlock()
 	}()
 	return
 }
 
-func (p *Job) run(ctx context.Context, strategies ...Strategy) {
-	strategy := Compose(strategies...)
-	defer strategy.Reset()
-	for !isContextCancelled(ctx) && strategy.Tick(ctx) {
-		p.payload(ctx)
+func (p *Job) run(ctx context.Context) {
+	lastTickTime := time.Now()
+	nextTickTime, ok := p.strategy.Tick(lastTickTime)
+	if !ok {
+		return
 	}
-}
+	timer := time.NewTimer(time.Until(nextTickTime))
+	defer timer.Stop()
+	if !wait(ctx, timer.C) {
+		return
+	}
 
-func isContextCancelled(ctx context.Context) (cancelled bool) {
-	select {
-	case <-ctx.Done():
-		cancelled = true
-		break
-	default:
-		break
+	for {
+		p.payload(ctx)
+
+		lastTickTime = nextTickTime
+		nextTickTime, ok = p.strategy.Tick(lastTickTime)
+		if !ok {
+			return
+		}
+		timer.Reset(time.Until(nextTickTime))
+		if !wait(ctx, timer.C) {
+			return
+		}
 	}
-	return
 }
 
 func (p *Job) Done() (done <-chan struct{}) {
-	p.lock.RLock()
 	done = p.done
-	p.lock.RUnlock()
 	return
 }
 
-func (p *Job) Stop() (err error) {
-	err = p.StopContext(context.Background())
-	return
+var notStartedError = errors.New("not started")
+
+func (p *Job) Stop() {
+	p.StopContext(context.Background())
 }
 
-var NotRunningError = errors.New("not running")
-
-func (p *Job) StopContext(ctx context.Context) (err error) {
-	p.lock.Lock()
-	if p.status != Running {
-		p.lock.RUnlock()
-		err = NotRunningError
-		return
+func (p *Job) StopContext(ctx context.Context) {
+	if atomic.LoadUint32(&p.started) == no {
+		panic(notStartedError)
 	}
-	p.status = Stopped
-	done := p.done
-	cancel := p.cancel
-	p.lock.Unlock()
 
-	cancel()
+	p.cancel()
+	wait(ctx, p.done)
+	return
+}
+
+func wait[T any](ctx context.Context, ch <-chan T) (ok bool) {
 	select {
 	case <-ctx.Done():
-		err = ctx.Err()
 		break
-	case <-done:
+	case <-ch:
+		ok = true
 		break
 	}
 	return
