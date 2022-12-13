@@ -1,7 +1,6 @@
 package job
 
 import (
-	"sync"
 	"time"
 )
 
@@ -9,16 +8,10 @@ type Strategy interface {
 	Tick(lastTickTime time.Time) (nextTickTime time.Time, ok bool)
 }
 
-var compositeStrategyPool = &sync.Pool{
-	New: func() any {
-		return &CompositeStrategy{make([]Strategy, 10)}
-	},
-}
-
 func Compose(strategies ...Strategy) *CompositeStrategy {
-	strategy := compositeStrategyPool.Get().(*CompositeStrategy)
-	strategy.strategies = append(strategy.strategies[:0], strategies...)
-	return strategy
+	return &CompositeStrategy{
+		strategies: strategies,
+	}
 }
 
 type CompositeStrategy struct {
@@ -32,19 +25,36 @@ func (s *CompositeStrategy) Tick(lastTickTime time.Time) (nextTickTime time.Time
 	return
 }
 
-type TickAtStrategy struct {
-	time      time.Time
-	firstTick bool
+type StrategyFunc func(lastTickTime time.Time) (nextTickTime time.Time, ok bool)
+
+func Function(f StrategyFunc) *FunctionStrategy {
+	return &FunctionStrategy{
+		f: f,
+	}
 }
 
-func TickAt(time time.Time) *TickAtStrategy {
-	return &TickAtStrategy{
+type FunctionStrategy struct {
+	f StrategyFunc
+}
+
+func (s *FunctionStrategy) Tick(lastTickTime time.Time) (nextTickTime time.Time, ok bool) {
+	nextTickTime, ok = s.f(lastTickTime)
+	return
+}
+
+func At(time time.Time) *ExactTimeStrategy {
+	return &ExactTimeStrategy{
 		time:      time,
 		firstTick: true,
 	}
 }
 
-func (s *TickAtStrategy) Tick(_ time.Time) (nextTickTime time.Time, ok bool) {
+type ExactTimeStrategy struct {
+	time      time.Time
+	firstTick bool
+}
+
+func (s *ExactTimeStrategy) Tick(_ time.Time) (nextTickTime time.Time, ok bool) {
 	ok = s.firstTick
 	if !ok {
 		return
@@ -54,14 +64,14 @@ func (s *TickAtStrategy) Tick(_ time.Time) (nextTickTime time.Time, ok bool) {
 	return
 }
 
-type NoDelayStrategy struct {
-	firstTick bool
-}
-
 func NoDelay() *NoDelayStrategy {
 	return &NoDelayStrategy{
 		firstTick: true,
 	}
+}
+
+type NoDelayStrategy struct {
+	firstTick bool
 }
 
 func (s *NoDelayStrategy) Tick(lastTickTime time.Time) (nextTickTime time.Time, ok bool) {
@@ -74,16 +84,16 @@ func (s *NoDelayStrategy) Tick(lastTickTime time.Time) (nextTickTime time.Time, 
 	return
 }
 
-type DelayStrategy struct {
-	delay     time.Duration
-	firstTick bool
-}
-
 func Delay(delay time.Duration) *DelayStrategy {
 	return &DelayStrategy{
 		delay:     delay,
 		firstTick: true,
 	}
+}
+
+type DelayStrategy struct {
+	delay     time.Duration
+	firstTick bool
 }
 
 func (s *DelayStrategy) Tick(lastTickTime time.Time) (nextTickTime time.Time, ok bool) {
@@ -96,15 +106,11 @@ func (s *DelayStrategy) Tick(lastTickTime time.Time) (nextTickTime time.Time, ok
 	return
 }
 
-type IntervalStrategy = IntervalIncludingPayloadDelayStrategy
-
 func Interval(period time.Duration) *IntervalStrategy {
 	return IntervalIncludingPayloadDelay(period)
 }
 
-type IntervalIncludingPayloadDelayStrategy struct {
-	period time.Duration
-}
+type IntervalStrategy = IntervalIncludingPayloadDelayStrategy
 
 func IntervalIncludingPayloadDelay(period time.Duration) *IntervalIncludingPayloadDelayStrategy {
 	return &IntervalIncludingPayloadDelayStrategy{
@@ -112,14 +118,14 @@ func IntervalIncludingPayloadDelay(period time.Duration) *IntervalIncludingPaylo
 	}
 }
 
-func (s *IntervalIncludingPayloadDelayStrategy) Tick(_ time.Time) (nextTickTime time.Time, ok bool) {
-	nextTickTime = time.Now().Add(s.period)
-	ok = true
-	return
+type IntervalIncludingPayloadDelayStrategy struct {
+	period time.Duration
 }
 
-type IntervalExcludingPayloadDelayStrategy struct {
-	period time.Duration
+func (s *IntervalIncludingPayloadDelayStrategy) Tick(_ time.Time) (nextTickTime time.Time, ok bool) {
+	ok = true
+	nextTickTime = time.Now().Add(s.period)
+	return
 }
 
 func IntervalExcludingPayloadDelay(period time.Duration) *IntervalExcludingPayloadDelayStrategy {
@@ -128,8 +134,12 @@ func IntervalExcludingPayloadDelay(period time.Duration) *IntervalExcludingPaylo
 	}
 }
 
+type IntervalExcludingPayloadDelayStrategy struct {
+	period time.Duration
+}
+
 func (s *IntervalExcludingPayloadDelayStrategy) Tick(lastTickTime time.Time) (nextTickTime time.Time, ok bool) {
-	nextTickTime = lastTickTime.Add(s.period)
 	ok = true
+	nextTickTime = lastTickTime.Add(s.period)
 	return
 }
