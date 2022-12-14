@@ -107,38 +107,32 @@ func (s *DelayStrategy) Tick(lastTickTime time.Time) (nextTickTime time.Time, ok
 }
 
 func Interval(period time.Duration) *IntervalStrategy {
-	return IntervalIncludingPayloadDelay(period)
-}
-
-type IntervalStrategy = IntervalIncludingPayloadDelayStrategy
-
-func IntervalIncludingPayloadDelay(period time.Duration) *IntervalIncludingPayloadDelayStrategy {
-	return &IntervalIncludingPayloadDelayStrategy{
-		period: period,
+	return &IntervalStrategy{
+		interval: period,
 	}
 }
 
-type IntervalIncludingPayloadDelayStrategy struct {
-	period time.Duration
+type IntervalStrategy struct {
+	interval time.Duration
 }
 
-func (s *IntervalIncludingPayloadDelayStrategy) Tick(_ time.Time) (nextTickTime time.Time, ok bool) {
+func (s *IntervalStrategy) Tick(_ time.Time) (nextTickTime time.Time, ok bool) {
 	ok = true
-	nextTickTime = time.Now().Add(s.period)
+	nextTickTime = time.Now().Add(s.interval)
 	return
 }
 
-func IntervalExcludingPayloadDelay(period time.Duration) *IntervalExcludingPayloadDelayStrategy {
-	return &IntervalExcludingPayloadDelayStrategy{
+func Period(period time.Duration) *PeriodStrategy {
+	return &PeriodStrategy{
 		period: period,
 	}
 }
 
-type IntervalExcludingPayloadDelayStrategy struct {
+type PeriodStrategy struct {
 	period time.Duration
 }
 
-func (s *IntervalExcludingPayloadDelayStrategy) Tick(lastTickTime time.Time) (nextTickTime time.Time, ok bool) {
+func (s *PeriodStrategy) Tick(lastTickTime time.Time) (nextTickTime time.Time, ok bool) {
 	ok = true
 	nextTickTime = lastTickTime.Add(s.period)
 	return

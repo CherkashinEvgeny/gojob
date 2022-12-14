@@ -99,7 +99,7 @@ func Test_OnDelayStrategySecondTick_ShouldReturnZeroTime(t *testing.T) {
 
 func Test_OnIntervalIncludingPayloadDelayStrategyFirstTick_ShouldReturnNowWithSpecifiedDelay(t *testing.T) {
 	lastTickTime := time.Now().Add(-2 * time.Second)
-	strategy := IntervalIncludingPayloadDelay(time.Second)
+	strategy := Interval(time.Second)
 	nextTickTime, ok := strategy.Tick(lastTickTime)
 	assert.True(t, time.Now().Add(time.Second).Sub(nextTickTime) > 0)
 	assert.True(t, ok)
@@ -107,7 +107,7 @@ func Test_OnIntervalIncludingPayloadDelayStrategyFirstTick_ShouldReturnNowWithSp
 
 func Test_OnIntervalIncludingPayloadDelayStrategySecondTick_ShouldReturnNowWithSpecifiedDelay(t *testing.T) {
 	lastTickTime := time.Now().Add(-2 * time.Second)
-	strategy := IntervalIncludingPayloadDelay(time.Second)
+	strategy := Interval(time.Second)
 	_, _ = strategy.Tick(lastTickTime)
 	nextTickTime, ok := strategy.Tick(lastTickTime)
 	assert.True(t, time.Now().Add(time.Second).Sub(nextTickTime) > 0)
@@ -116,7 +116,7 @@ func Test_OnIntervalIncludingPayloadDelayStrategySecondTick_ShouldReturnNowWithS
 
 func Test_OnIntervalExcludingPayloadDelayStrategyFirstTick_ShouldReturnLastTickTimeWithSpecifiedDelay(t *testing.T) {
 	lastTickTime := time.Now().Add(-2 * time.Second)
-	strategy := IntervalExcludingPayloadDelay(time.Second)
+	strategy := Period(time.Second)
 	nextTickTime, ok := strategy.Tick(lastTickTime)
 	assert.Equal(t, lastTickTime.Add(time.Second), nextTickTime)
 	assert.True(t, ok)
@@ -124,7 +124,7 @@ func Test_OnIntervalExcludingPayloadDelayStrategyFirstTick_ShouldReturnLastTickT
 
 func Test_OnIntervalExcludingPayloadDelayStrategySecondTick_ShouldReturnLastTickTimeWithSpecifiedDelay(t *testing.T) {
 	lastTickTime := time.Now().Add(-2 * time.Second)
-	strategy := IntervalExcludingPayloadDelay(time.Second)
+	strategy := Period(time.Second)
 	_, _ = strategy.Tick(lastTickTime)
 	nextTickTime, ok := strategy.Tick(lastTickTime)
 	assert.Equal(t, lastTickTime.Add(time.Second), nextTickTime)
